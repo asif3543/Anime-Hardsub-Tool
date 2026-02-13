@@ -1,0 +1,162 @@
+import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:ffmpeg_kit_flutter_full/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_full/return_code.dart';
+import 'dart:io';
+
+void main() => runApp(MaterialApp(
+      theme: ThemeData.dark().copyWith(
+        scaffoldBackgroundColor: Colors.black,
+        primaryColor: Colors.green,
+      ),
+      home: HardsubTool(),
+      debugShowCheckedModeBanner: false,
+    ));
+
+class HardsubTool extends StatefulWidget {
+  @override
+  _HardsubToolState createState() => _HardsubToolState();
+}
+
+class _HardsubToolState extends State<HardsubTool> {
+  String? videoPath, subPath, thumbPath;
+  String position = "Top Right";
+  bool isProcessing = false;
+  String statusText = "";
+
+  Future<void> pickFile(String type) async {
+    FilePickerResult? result = await FilePicker.platform.pickFiles();
+    if (result != null) {
+      setState(() {
+        if (type == 'video') videoPath = result.files.single.path;
+        if (type == 'sub') subPath = result.files.single.path;
+        if (type == 'thumb') thumbPath = result.files.single.path;
+      });
+    }
+  }
+
+  void startHardsubbing() async {
+    if (videoPath == null || subPath == null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Select Video and Subtitles!")));
+      return;
+    }
+
+    setState(() {
+      isProcessing = true;
+      statusText = "Processing... Please wait";
+    });
+
+    String outputPath = videoPath!.replaceAll(RegExp(r'\.(mp4|mkv)$'), '_hardsub.mp4');
+    
+    // FFmpeg Command
+    String command = "-i \"$videoPath\" -vf \"ass='$subPath'\" -c:a copy \"$outputPath\" -y";
+    
+    if (thumbPath != null) {
+      String pos = "x=W-w-10:y=10"; // Default Top Right
+      if (position == "Top Left") pos = "x=10:y=10";
+      if (position == "Bottom Left") pos = "x=10:y=H-h-10";
+      if (position == "Bottom Right") pos = "x=W-w-10:y=H-h-10";
+      
+      command = "-i \"$videoPath\" -i \"$thumbPath\" -filter_complex \"[0:v]ass='$subPath'[v1];[v1][1:v]overlay=$pos\" -c:a copy \"$outputPath\" -y";
+    }
+
+    await FFmpegKit.execute(command).then((session) async {
+      final returnCode = await session.getReturnCode();
+      setState(() => isProcessing = false);
+      
+      if (ReturnCode.isSuccess(returnCode)) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          backgroundColor: Colors.green,
+          content: Text("Success! Saved to: ${outputPath.split('/').last}"),
+        ));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          backgroundColor: Colors.red,
+          content: Text("Error: Processing Failed"),
+        ));
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(20.0),
+            child: Column(
+              children: [
+                SizedBox(height: 20),
+                Text("Anime Hardsub Tool", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
+                SizedBox(height: 40),
+                Container(
+                  padding: EdgeInsets.all(15),
+                  decoration: BoxDecoration(color: Color(0xFF1E1E1E), borderRadius: BorderRadius.circular(20)),
+                  child: Column(
+                    children: [
+                      buildButton("SELECT VIDEO (MP4/MKV)", videoPath, 'video'),
+                      buildButton("SELECT ASS SUBTITLES (.ass)", subPath, 'sub'),
+                      buildButton("SELECT THUMBNAIL (OPTIONAL)", thumbPath, 'thumb'),
+                      
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text("Thumbnail Position:"),
+                            DropdownButton<String>(
+                              dropdownColor: Colors.grey[900],
+                              value: position,
+                              items: ["Top Left", "Top Right", "Bottom Left", "Bottom Right"].map((String val) {
+                                return DropdownMenuItem<String>(value: val, child: Text(val));
+                              }).toList(),
+                              onChanged: (v) => setState(() => position = v!),
+                            ),
+                          ],
+                        ),
+                      ),
+                      
+                      SizedBox(height: 30),
+                      
+                      isProcessing 
+                        ? Column(children: [CircularProgressIndicator(color: Colors.green), SizedBox(height: 10), Text(statusText)])
+                        : ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green,
+                              minimumSize: Size(double.infinity, 65),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+                            ),
+                            onPressed: startHardsubbing,
+                            child: Text("START HARDSUBBING & SAVE", style: TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold)),
+                          ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget buildButton(String title, String? path, String type) {
+    return Column(
+      children: [
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black, minimumSize: Size(double.infinity, 50)),
+          onPressed: () => pickFile(type),
+          child: Text(title),
+        ),
+        SizedBox(height: 5),
+        Text(
+          path == null ? "No file selected" : "Selected: ${path.split('/').last}",
+          style: TextStyle(color: path == null ? Colors.red : Colors.green, fontSize: 12),
+          textAlign: TextAlign.center,
+        ),
+        SizedBox(height: 15),
+      ],
+    );
+  }
+}
