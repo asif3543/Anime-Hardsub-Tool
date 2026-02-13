@@ -1,21 +1,30 @@
-name: anime_hardsub_tool
-description: A new Flutter project.
-publish_to: 'none'
-version: 1.0.0+1
+name: Build APK
+on: [push]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
 
-environment:
-  sdk: '>=3.0.0 <4.0.0'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
 
-dependencies:
-  flutter:
-    sdk: flutter
-  file_picker: ^5.3.3
-  ffmpeg_kit_flutter_full: ^6.0.3  # Ye '.full' hona chahiye tabhi .ass support karega
-  path_provider: ^2.1.1
+      # Ye step Android folder aur baaki files generate karega
+      - name: Create Project Structure
+        run: |
+          flutter create --platforms android .
+          # FFmpeg ke liye minSdkVersion 24 zaroori hai, ye command use set kar degi
+          sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 24/g' android/app/build.gradle
 
-dev_dependencies:
-  flutter_test:
-    sdk: flutter
+      - name: Get Dependencies
+        run: flutter pub get
 
-flutter:
-  uses-material-design: true
+      - name: Build APK
+        run: flutter build apk --release
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: AnimeHardsubTool-APK
+          path: build/app/outputs/flutter-apk/app-release.apk
